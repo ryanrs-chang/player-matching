@@ -268,10 +268,38 @@
         border-radius: 5px;
         margin-bottom: 10px;
         overflow: hidden;
+        touch-action: none; /* Prevent default touch actions for better zoom handling */
       }
       
       .graph-controls {
         margin: 10px 0;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+      
+      .zoom-controls {
+        display: flex;
+        gap: 5px;
+      }
+      
+      .zoom-btn {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 4px 8px;
+        cursor: pointer;
+        font-weight: bold;
+        user-select: none;
+      }
+      
+      .zoom-btn:hover {
+        background-color: #e9ecef;
+      }
+      
+      .zoom-reset {
+        background-color: #e9ecef;
       }
       
       /* 節點和連線樣式 */
@@ -400,29 +428,6 @@
             oninput="filterMatches()"
           />
         </div>
-        <div class="filter-options">
-          <button
-            class="filter-button"
-            onclick="toggleFilter('all')"
-            id="filterAll"
-          >
-            全部
-          </button>
-          <button
-            class="filter-button"
-            onclick="toggleFilter('unplayed')"
-            id="filterUnplayed"
-          >
-            未打
-          </button>
-          <button
-            class="filter-button"
-            onclick="toggleFilter('played')"
-            id="filterPlayed"
-          >
-            已打
-          </button>
-        </div>
         <div id="pendingMatches" class="match-list"></div>
       </div>
 
@@ -502,7 +507,6 @@
       let upcomingMatches = [];
       let completedMatches = [];
       let playerStats = {};
-      let currentFilter = "all";
       let searchQuery = "";
 
       function generateMatches() {
@@ -556,12 +560,7 @@
             match.player1.toLowerCase().includes(searchQuery) ||
             match.player2.toLowerCase().includes(searchQuery);
 
-          const matchesFilter =
-            currentFilter === "all" ||
-            (currentFilter === "unplayed" && !match.played) ||
-            (currentFilter === "played" && match.played);
-
-          return matchesSearch && matchesFilter;
+          return matchesSearch;
         });
 
         filteredMatches.forEach((match, index) => {
@@ -802,19 +801,6 @@
         updatePendingMatches();
       }
 
-      function toggleFilter(filter) {
-        currentFilter = filter;
-        document.getElementById("filterAll").classList.remove("active");
-        document.getElementById("filterUnplayed").classList.remove("active");
-        document.getElementById("filterPlayed").classList.remove("active");
-        document
-          .getElementById(
-            "filter" + filter.charAt(0).toUpperCase() + filter.slice(1)
-          )
-          .classList.add("active");
-        updatePendingMatches();
-      }
-
       function searchPlayer(playerName) {
         document.getElementById("searchInput").value = playerName;
         filterMatches();
@@ -1016,7 +1002,21 @@
         const svg = d3.select('#matchGraph')
           .append('svg')
           .attr('width', width)
-          .attr('height', height);
+          .attr('height', height)
+          .attr('viewBox', [0, 0, width, height])
+          .attr('style', 'max-width: 100%; height: auto;');
+        
+        // 添加縮放功能
+        const zoom = d3.zoom()
+          .scaleExtent([0.5, 5])
+          .on('zoom', (event) => {
+            g.attr('transform', event.transform);
+          });
+          
+        svg.call(zoom);
+        
+        // 創建包含所有元素的組
+        const g = svg.append('g');
         
         // 創建節點數據
         const nodesData = players.map(p => ({ 
@@ -1052,7 +1052,7 @@
           .on('tick', ticked);
         
         // 繪製連線
-        const links = svg.append('g')
+        const links = g.append('g')
           .selectAll('line')
           .data(processedLinks)
           .enter()
@@ -1061,7 +1061,7 @@
           .attr('stroke-dasharray', d => d.upcoming ? '5,5' : '');
         
         // 繪製節點
-        const nodes = svg.append('g')
+        const nodes = g.append('g')
           .selectAll('circle')
           .data(nodesData)
           .enter()
@@ -1080,7 +1080,7 @@
             .on('end', dragended));
         
         // 添加選手標籤
-        const labels = svg.append('g')
+        const labels = g.append('g')
           .selectAll('text')
           .data(nodesData)
           .enter()
@@ -1137,6 +1137,43 @@
             const played = completedMatches.filter(m => m.player1 === d.id || m.player2 === d.id).length;
             return `${d.id}\n已完成: ${played}/${total}`;
           });
+          
+        // 添加縮放控制按鈕到圖表控制區
+        const zoomControlsDiv = document.createElement('div');
+        zoomControlsDiv.className = 'zoom-controls';
+        zoomControlsDiv.innerHTML = `
+          <button class="zoom-btn zoom-in" title="放大">+</button>
+          <button class="zoom-btn zoom-out" title="縮小">-</button>
+          <button class="zoom-btn zoom-reset" title="重設">⟳</button>
+        `;
+        
+        // 將縮放控制按鈕添加到現有的圖表控制區
+        const graphControls = document.querySelector('.graph-controls');
+        // 先移除已存在的縮放控制按鈕，避免重複添加
+        const existingZoomControls = graphControls.querySelector('.zoom-controls');
+        if (existingZoomControls) {
+          graphControls.removeChild(existingZoomControls);
+        }
+        graphControls.appendChild(zoomControlsDiv);
+        
+        // 為縮放按鈕添加事件監聽器
+        document.querySelector('.zoom-in').addEventListener('click', () => {
+          svg.transition().duration(300).call(zoom.scaleBy, 1.3);
+        });
+        
+        document.querySelector('.zoom-out').addEventListener('click', () => {
+          svg.transition().duration(300).call(zoom.scaleBy, 0.7);
+        });
+        
+        document.querySelector('.zoom-reset').addEventListener('click', () => {
+          svg.transition().duration(300).call(
+            zoom.transform,
+            d3.zoomIdentity
+          );
+        });
+        
+        // 添加觸控縮放事件處理
+        svg.call(zoom);
       }
     </script>
   </body>
