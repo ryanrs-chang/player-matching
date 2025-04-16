@@ -240,6 +240,137 @@
           font-size: 1.2em;
         }
       }
+      
+      /* 標籤頁樣式 */
+      .stats-tabs {
+        display: flex;
+        margin-bottom: 15px;
+        border-bottom: 1px solid #dee2e6;
+      }
+      
+      .tab-button {
+        padding: 8px 15px;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        cursor: pointer;
+      }
+      
+      .tab-button.active {
+        border-bottom: 2px solid #007bff;
+        color: #007bff;
+      }
+      
+      /* 對戰圖樣式 */
+      .match-graph {
+        height: 400px;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        margin-bottom: 10px;
+        overflow: hidden;
+      }
+      
+      .graph-controls {
+        margin: 10px 0;
+      }
+      
+      /* 節點和連線樣式 */
+      .player-node {
+        fill: #6c757d;
+        stroke: #fff;
+        stroke-width: 2px;
+      }
+      
+      .player-node:hover {
+        fill: #007bff;
+      }
+      
+      .match-link {
+        stroke: #adb5bd;
+        stroke-width: 1.5px;
+      }
+      
+      .match-link.played {
+        stroke: #28a745;
+        stroke-width: 2.5px;
+      }
+      
+      .player-label {
+        font-size: 12px;
+        text-anchor: middle;
+        pointer-events: none;
+      }
+      
+      /* 對戰矩陣樣式 */
+      .matrix-view {
+        overflow-x: auto;
+        margin-top: 15px;
+      }
+      
+      .match-matrix {
+        border-collapse: collapse;
+        font-size: 14px;
+        margin: 0 auto;
+      }
+      
+      .match-matrix th,
+      .match-matrix td {
+        border: 1px solid #dee2e6;
+        padding: 8px;
+        text-align: center;
+        min-width: 40px;
+      }
+      
+      .match-matrix th {
+        background-color: #f8f9fa;
+        position: sticky;
+        top: 0;
+        font-weight: normal;
+      }
+      
+      .match-matrix th.player-header {
+        background-color: #e9ecef;
+        position: sticky;
+        left: 0;
+        z-index: 1;
+      }
+      
+      .match-matrix td.match-cell {
+        cursor: pointer;
+        position: relative;
+      }
+      
+      .match-matrix td.match-cell.played {
+        background-color: #d4edda;
+      }
+      
+      .match-matrix td.match-cell.upcoming {
+        background-color: #fff3cd;
+      }
+      
+      .match-matrix td.match-cell.pending {
+        background-color: #f8f9fa;
+      }
+      
+      .match-matrix td.diagonal {
+        background-color: #e9ecef;
+        background-image: linear-gradient(to bottom right, transparent calc(50% - 1px), #ced4da, transparent calc(50% + 1px));
+      }
+      
+      .match-number-badge {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        font-size: 10px;
+        color: #6c757d;
+      }
+      
+      /* 圖表切換樣式 */
+      .graph-type-controls {
+        display: flex;
+        margin-bottom: 15px;
+        gap: 10px;
+      }
     </style>
   </head>
   <body>
@@ -317,7 +448,35 @@
 
     <div class="stats-section">
       <h2>個人統計</h2>
-      <div id="playerStats" class="stats-grid"></div>
+      <div class="stats-tabs">
+        <button id="tabList" class="tab-button active" onclick="showTab('list')">列表視圖</button>
+        <button id="tabGraph" class="tab-button" onclick="showTab('graph')">對戰圖</button>
+        <button id="tabMatrix" class="tab-button" onclick="showTab('matrix')">對戰矩陣</button>
+      </div>
+      <div id="statsListView" class="stats-view">
+        <div id="playerStats" class="stats-grid"></div>
+      </div>
+      <div id="statsGraphView" class="stats-view" style="display:none">
+        <div class="graph-controls">
+          <label>
+            <input type="checkbox" id="showOnlyPlayed" onchange="updateMatchGraph()"> 只顯示已完成對戰
+          </label>
+        </div>
+        <div id="matchGraph" class="match-graph"></div>
+      </div>
+      <div id="statsMatrixView" class="stats-view" style="display:none">
+        <div class="graph-controls">
+          <label>
+            <input type="checkbox" id="hideEmptyCells" onchange="updateMatchMatrix()"> 隱藏空白格
+          </label>
+          <label style="margin-left: 15px;">
+            <input type="checkbox" id="showMatchNumbers" onchange="updateMatchMatrix()"> 顯示場次編號
+          </label>
+        </div>
+        <div class="matrix-view">
+          <table id="matchMatrix" class="match-matrix"></table>
+        </div>
+      </div>
     </div>
 
     <div class="regenerate-section">
@@ -337,6 +496,7 @@
       <button onclick="resetSystem()">重置系統</button>
     </div>
 
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <script>
       let matches = [];
       let upcomingMatches = [];
@@ -494,6 +654,11 @@
                 `;
           container.appendChild(div);
         });
+        
+        // 如果圖表視圖是可見的，更新圖表
+        if (document.getElementById('statsGraphView').style.display !== 'none') {
+          updateMatchGraph();
+        }
       }
 
       function togglePlayed(index) {
@@ -653,6 +818,294 @@
       function searchPlayer(playerName) {
         document.getElementById("searchInput").value = playerName;
         filterMatches();
+      }
+
+      // 新增函數: 顯示標籤頁
+      function showTab(tabName) {
+        // 重置所有標籤
+        document.querySelectorAll('.tab-button').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.stats-view').forEach(view => view.style.display = 'none');
+        
+        // 顯示選擇的標籤
+        document.getElementById('tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1)).classList.add('active');
+        document.getElementById('stats' + tabName.charAt(0).toUpperCase() + tabName.slice(1) + 'View').style.display = 'block';
+        
+        if (tabName === 'graph') {
+          updateMatchGraph();
+        } else if (tabName === 'matrix') {
+          updateMatchMatrix();
+        }
+      }
+      
+      // 生成對戰矩陣
+      function updateMatchMatrix() {
+        const matrixTable = document.getElementById('matchMatrix');
+        matrixTable.innerHTML = '';
+        
+        // 獲取所有選手
+        const players = Object.keys(playerStats);
+        if (players.length === 0) return;
+        
+        const hideEmptyCells = document.getElementById('hideEmptyCells').checked;
+        const showMatchNumbers = document.getElementById('showMatchNumbers').checked;
+        
+        // 獲取所有對戰
+        const allMatches = [...matches, ...upcomingMatches, ...completedMatches];
+        
+        // 創建表頭行
+        const headerRow = document.createElement('tr');
+        const cornerHeader = document.createElement('th');
+        cornerHeader.className = 'player-header';
+        cornerHeader.textContent = '對戰表';
+        headerRow.appendChild(cornerHeader);
+        
+        players.forEach(player => {
+          const header = document.createElement('th');
+          header.textContent = player;
+          headerRow.appendChild(header);
+        });
+        
+        matrixTable.appendChild(headerRow);
+        
+        // 創建每個選手對應的行
+        players.forEach((player1, rowIndex) => {
+          const row = document.createElement('tr');
+          
+          // 創建行標頭
+          const rowHeader = document.createElement('th');
+          rowHeader.className = 'player-header';
+          rowHeader.textContent = player1;
+          row.appendChild(rowHeader);
+          
+          // 創建每個單元格
+          players.forEach((player2, colIndex) => {
+            const cell = document.createElement('td');
+            
+            // 如果是對角線，添加斜線樣式
+            if (rowIndex === colIndex) {
+              cell.className = 'diagonal';
+              row.appendChild(cell);
+              return;
+            }
+            
+            // 查找這兩個選手之間的對戰
+            const match = allMatches.find(m => 
+              (m.player1 === player1 && m.player2 === player2) || 
+              (m.player1 === player2 && m.player2 === player1)
+            );
+            
+            if (match) {
+              const isCompleted = completedMatches.some(m => m.matchNo === match.matchNo);
+              const isUpcoming = upcomingMatches.some(m => m.matchNo === match.matchNo);
+              const isPending = matches.some(m => m.matchNo === match.matchNo);
+              
+              let statusClass = '';
+              if (isCompleted) {
+                statusClass = 'played';
+                cell.innerHTML = '✓';
+              } else if (isUpcoming) {
+                statusClass = 'upcoming';
+                cell.innerHTML = '⏱';
+              } else if (isPending) {
+                statusClass = 'pending';
+                cell.innerHTML = '';
+              }
+              
+              cell.className = `match-cell ${statusClass}`;
+              
+              // 顯示場次編號
+              if (showMatchNumbers) {
+                const badge = document.createElement('span');
+                badge.className = 'match-number-badge';
+                badge.textContent = match.matchNo;
+                cell.appendChild(badge);
+              }
+              
+              // 添加點擊事件來搜索對應的對戰
+              cell.addEventListener('click', () => {
+                document.getElementById('searchInput').value = 
+                  `${player1} ${player2}`.toLowerCase();
+                filterMatches();
+                
+                // 顯示工具提示
+                const tooltip = document.createElement('div');
+                tooltip.className = 'tooltip';
+                tooltip.textContent = `第${match.matchNo}場: ${player1} vs ${player2}`;
+                tooltip.style.position = 'absolute';
+                tooltip.style.backgroundColor = '#333';
+                tooltip.style.color = 'white';
+                tooltip.style.padding = '5px 10px';
+                tooltip.style.borderRadius = '3px';
+                tooltip.style.zIndex = '1000';
+                tooltip.style.fontSize = '14px';
+                document.body.appendChild(tooltip);
+                
+                // 設置位置
+                const rect = cell.getBoundingClientRect();
+                tooltip.style.left = `${rect.left + window.scrollX}px`;
+                tooltip.style.top = `${rect.bottom + window.scrollY + 5}px`;
+                
+                // 過一段時間後移除工具提示
+                setTimeout(() => {
+                  document.body.removeChild(tooltip);
+                }, 2000);
+              });
+            } else if (!hideEmptyCells) {
+              cell.className = 'match-cell';
+            }
+            
+            row.appendChild(cell);
+          });
+          
+          matrixTable.appendChild(row);
+        });
+        
+        // 添加統計行/列
+        const statRow = document.createElement('tr');
+        const statHeader = document.createElement('th');
+        statHeader.className = 'player-header';
+        statHeader.textContent = '已完成場數';
+        statRow.appendChild(statHeader);
+        
+        players.forEach(player => {
+          const statCell = document.createElement('td');
+          const completedCount = completedMatches.filter(m => 
+            m.player1 === player || m.player2 === player
+          ).length;
+          const totalCount = playerStats[player].totalMatches;
+          statCell.textContent = `${completedCount}/${totalCount}`;
+          statCell.style.backgroundColor = '#f8f9fa';
+          statRow.appendChild(statCell);
+        });
+        
+        matrixTable.appendChild(statRow);
+      }
+      
+      // 更新對戰圖函數
+      function updateMatchGraph() {
+        const graphContainer = document.getElementById('matchGraph');
+        graphContainer.innerHTML = '';
+        
+        // 獲取所有選手
+        const players = Object.keys(playerStats);
+        if (players.length === 0) return;
+        
+        // 篩選對戰
+        const showOnlyPlayed = document.getElementById('showOnlyPlayed').checked;
+        let linksData = [];
+        
+        // 從所有對戰中收集連線數據
+        const allMatches = [...matches, ...upcomingMatches, ...completedMatches];
+        allMatches.forEach(match => {
+          if (showOnlyPlayed && !completedMatches.some(m => m.matchNo === match.matchNo)) {
+            return;
+          }
+          linksData.push({
+            source: match.player1,
+            target: match.player2,
+            played: completedMatches.some(m => m.matchNo === match.matchNo),
+            upcoming: upcomingMatches.some(m => m.matchNo === match.matchNo),
+            matchNo: match.matchNo
+          });
+        });
+        
+        // 創建D3圖表
+        const width = graphContainer.clientWidth;
+        const height = graphContainer.clientHeight;
+        
+        const svg = d3.select('#matchGraph')
+          .append('svg')
+          .attr('width', width)
+          .attr('height', height);
+        
+        // 創建力導向圖
+        const simulation = d3.forceSimulation(players.map(p => ({id: p})))
+          .force('link', d3.forceLink(linksData)
+            .id(d => d.id)
+            .distance(100))
+          .force('charge', d3.forceManyBody().strength(-200))
+          .force('center', d3.forceCenter(width / 2, height / 2))
+          .force('collision', d3.forceCollide().radius(40));
+        
+        // 繪製連線
+        const links = svg.append('g')
+          .selectAll('line')
+          .data(linksData)
+          .enter()
+          .append('line')
+          .attr('class', d => `match-link ${d.played ? 'played' : ''} ${d.upcoming ? 'upcoming' : ''}`)
+          .attr('stroke-dasharray', d => d.upcoming ? '5,5' : '');
+        
+        // 繪製節點
+        const nodes = svg.append('g')
+          .selectAll('circle')
+          .data(players.map(p => ({id: p})))
+          .enter()
+          .append('circle')
+          .attr('class', 'player-node')
+          .attr('r', d => {
+            const matchCount = allMatches.filter(m => 
+              (m.player1 === d.id || m.player2 === d.id) && 
+              (completedMatches.some(cm => cm.matchNo === m.matchNo))
+            ).length;
+            return 10 + matchCount * 2;
+          })
+          .call(d3.drag()
+            .on('start', dragstarted)
+            .on('drag', dragged)
+            .on('end', dragended));
+        
+        // 添加選手標籤
+        const labels = svg.append('g')
+          .selectAll('text')
+          .data(players.map(p => ({id: p})))
+          .enter()
+          .append('text')
+          .attr('class', 'player-label')
+          .text(d => d.id);
+        
+        // 更新力導向圖佈局
+        simulation.on('tick', () => {
+          links
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+          
+          nodes
+            .attr('cx', d => d.x = Math.max(20, Math.min(width - 20, d.x)))
+            .attr('cy', d => d.y = Math.max(20, Math.min(height - 20, d.y)));
+          
+          labels
+            .attr('x', d => d.x)
+            .attr('y', d => d.y - 15);
+        });
+        
+        // 拖曳行為
+        function dragstarted(event, d) {
+          if (!event.active) simulation.alphaTarget(0.3).restart();
+          d.fx = d.x;
+          d.fy = d.y;
+        }
+        
+        function dragged(event, d) {
+          d.fx = event.x;
+          d.fy = event.y;
+        }
+        
+        function dragended(event, d) {
+          if (!event.active) simulation.alphaTarget(0);
+          d.fx = null;
+          d.fy = null;
+        }
+        
+        // 添加節點提示
+        nodes.append('title')
+          .text(d => {
+            const total = allMatches.filter(m => m.player1 === d.id || m.player2 === d.id).length;
+            const played = completedMatches.filter(m => m.player1 === d.id || m.player2 === d.id).length;
+            return `${d.id}\n已完成: ${played}/${total}`;
+          });
       }
     </script>
   </body>
